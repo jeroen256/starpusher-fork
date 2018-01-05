@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Starpusher Fork
+Comment=Aangepast Jeroen
+Type=Application
+Terminal=true
+Path=/home/pi/Jeroen/starpusher-fork
+Exec=python3 main.py
+Icon=/home/pi/Jeroen/starpusher-fork/Star.png
+
