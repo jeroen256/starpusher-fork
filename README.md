@@ -1,10 +1,36 @@
+# Starpusher-Fork
+
 This game is copied from:
 http://inventwithpython.com/pygame/
 
-Then I added some extra features:
+I really enjoy playing it, big thanks to Al Sweigart!
+
+Extra features added:
 - Remember level and gamestate
 - ALT + Arrow: keep walking
 - CTRL + Arrow: walk 5 steps
 - SHIFT + Arrow: walk to the end of the line
-- Mouseclick: teleport, cheating is not possible, shortest route to destination is calculated, if possible, and steps are added.
 - CTRL + Z: undo
+- Mouseclick: teleport / automatic walking. 
+  - Save some serious time with repeating tasks! :)
+  - Game rules still apply. Cheating is not really possible, although that would have been a lot easier to implement. ;)
+  - Click anywhere to request the player to be moved there.
+  - Click on a star to select it. Then click anywhere to request the star to be moved there.
+  - Shortest route is calculated with BFS (Breadth First Search), a function to find the shortest path in a maze between a given source cell to a destination cell. 
+  - https://www.geeksforgeeks.org/shortest-path-in-a-binary-maze/
+  - Step counter is increased accordingly.
+
+In case of any error, delete the "settings.pkl" file.
+If that doens't resolve it, also delete the "settings.json" file.
+These files contain the saved game state. 
+Sometimes a newer version comes out that can't handle the older game state.
+
+To adjust the game resolution / window size, edit the file "main.py" around line 30:
+WINWIDTH = 1366
+WINHEIGHT = 720
+Set the preferred width and height in pizels. This is on todo list..
+
+Github: https://github.com/jeroen256/starpusher-fork
+
+Enjoy playing!
+

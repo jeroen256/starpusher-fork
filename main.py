@@ -21,6 +21,10 @@ from pygame.locals import *
 import queue
 import json
 import pickle
+from enum import Enum
+
+class GameStateItem(Enum):
+    SELECTED_STAR_INDEX = 4
 
 FPS = 30 # frames per second to update the screen
 WINWIDTH = 1366 # width of the program's window, in pixels
@@ -74,6 +78,7 @@ def main():
     IMAGESDICT = {'uncovered goal': pygame.image.load('RedSelector.png'),
                   'covered goal': pygame.image.load('Selector.png'),
                   'star': pygame.image.load('Star.png'),
+                  'star red': pygame.image.load('star_red.png'),
                   'corner': pygame.image.load('Wall_Block_Tall.png'),
                   'wall': pygame.image.load('Wood_Block_Tall.png'),
                   'inside floor': pygame.image.load('Plain_Block.png'),
@@ -133,10 +138,11 @@ def main():
     # finishes that level, the next/previous level is loaded.
     while True: # main game loop
         # Run the level to actually start playing the game:
-        try:
-            result = runLevel(levels, currentLevelIndex)
-        except Exception as ex:
-            print("Error in runLevel, retrying without savedGameStateObj: {}".format(str(ex)))
+        result = runLevel(levels, currentLevelIndex)
+        # try:
+        #     result = runLevel(levels, currentLevelIndex)
+        # except Exception as ex:
+        #     print("Error in runLevel, retrying without savedGameStateObj: {}".format(str(ex)))
         savedGameStateObj = None
         if result in ('solved', 'next'):
             # Go to the next level.
@@ -162,7 +168,7 @@ def runLevel(levels, levelNum):
     mapNeedsRedraw = True # set to True to call drawMap()
     levelSurf = BASICFONT.render('Level %s of %s' % (levelNum + 1, len(levels)), 1, TEXTCOLOR)
     levelRect = levelSurf.get_rect()
-    levelRect.bottomleft = (20, WINHEIGHT - 35)
+    levelRect.bottomleft = (20, WINHEIGHT - 10)
     mapWidth = len(mapObj) * TILEWIDTH
     mapHeight = (len(mapObj[0]) - 1) * TILEFLOORHEIGHT + TILEHEIGHT
     MAX_CAM_X_PAN = abs(HALF_WINHEIGHT - int(mapHeight / 2)) + TILEWIDTH
@@ -209,18 +215,60 @@ def runLevel(levels, levelNum):
                 mouseTileY = (mousey - HALF_WINHEIGHT) / (TILEFLOORHEIGHT) + len(mapObj[0]) / 2 - .5 - cameraOffsetY_tiles
                 mouseTileX = int(round(mouseTileX, 0))
                 mouseTileY = int(round(mouseTileY, 0))
-                if  not isBlocked(mapObj, gameStateObj, mouseTileX, mouseTileY):
-                    # Create mesh, draw current location of stars:
+                mouseTile = (mouseTileX, mouseTileY)
+                if not isBlocked(mapObj, gameStateObj, mouseTileX, mouseTileY):
+                    if gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name] != None: # push star
+                        selectedStar = gameStateObj['stars'][gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name]]
+                        distance, player = pushStar(mapObj, gameStateObj, selectedStar, mouseTile) or (None, None)
+                        if distance != None and distance > 0:
+                            jump = distance
+                            gameStateObj['stepCounter'] += distance
+                            gameStateObj['player'] = player
+                            # Move the star.
+                            gameStateObj['stars'][gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name]] = mouseTile
+                            mapNeedsRedraw = True
+                    else: # teleport
+                        gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name] = None
+                        # Create mesh, draw current location of stars:
+                        mesh = copy.deepcopy(mapObj)
+                        for star_x, star_y in gameStateObj['stars']: mesh[star_x][star_y] = "$"
+                        distance = BFS(mesh, gameStateObj['player'], mouseTile)
+                        if not distance == None and distance > 0:
+                            jump = distance
+                            gameStateObj['stepCounter'] += distance
+                            gameStateObj['player'] = mouseTile
+                            mapNeedsRedraw = True
+                        else: jump = 0
+                elif mouseTile in gameStateObj['stars']:
+                    # select or unselect star
+                    mouseTileStarIndex = gameStateObj['stars'].index(mouseTile)
+                    if mouseTileStarIndex == gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name]:
+                        gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name] = None
+                    else: gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name] = mouseTileStarIndex
+                    # Try to walk to next to the to be pushed star
+                    rowNum = [-1, 0, 0, 1]
+                    colNum = [0, -1, 1, 0]
+                    bestRoute = None
                     mesh = copy.deepcopy(mapObj)
-                    for star_x, star_y in gameStateObj['stars']:
-                        mesh[star_x][star_y] = "$"
-                    distance = BFS(mesh, gameStateObj['player'], (mouseTileX, mouseTileY))
-                    if not distance == None and distance > 0:
-                        jump = distance
-                        gameStateObj['stepCounter'] += distance
-                        gameStateObj['player'] = (mouseTileX, mouseTileY)
+                    for star_x, star_y in gameStateObj['stars']: mesh[star_x][star_y] = "$"
+                    for i in range(4):
+                        x = mouseTileX + rowNum[i]
+                        y = mouseTileY + colNum[i]
+                        distance = BFS(mesh, gameStateObj['player'], (x, y))
+                        if not distance == None:
+                            if bestRoute == None or distance < bestRoute[0]: bestRoute = (distance, x, y)
+                    if not bestRoute == None:
+                        jump = bestRoute[0]
+                        gameStateObj['stepCounter'] += bestRoute[0]
+                        gameStateObj['player'] = (bestRoute[1], bestRoute[2])
                         mapNeedsRedraw = True
-                    else: jump = 0
+                    else: 
+                        jump = 0
+                        gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name] = None
+                else: # click on wall
+                    if gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name] != None:
+                        gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name] = None
+                        mapNeedsRedraw = True
             elif event.type == KEYDOWN:
                 # Handle key presses
                 keyPressed = True
@@ -341,11 +389,14 @@ def runLevel(levels, levelNum):
 
         DISPLAYSURF.blit(levelSurf, levelRect)
         j_playerx, j_playery = gameStateObj['player']
-        #stepSurf = BASICFONT.render('Steps: {}{}, Player {} {}, Camera: {} {}, Map {} {}, Mouse {} {} {} {}'.format(gameStateObj['stepCounter'], "" if jump < 2 else " +"+str(jump), j_playerx, j_playery, cameraOffsetX, cameraOffsetY, len(mapObj), len(mapObj[0]), mousex, mousey, mouseTileX, mouseTileY), 1, TEXTCOLOR)
         stepSurf = BASICFONT.render('Steps: {}{}'.format(gameStateObj['stepCounter'], "" if jump < 2 else " +"+str(jump)), 1, TEXTCOLOR)
         stepRect = stepSurf.get_rect()
-        stepRect.bottomleft = (20, WINHEIGHT - 10)
+        stepRect.bottomleft = (20, WINHEIGHT - 60)
         DISPLAYSURF.blit(stepSurf, stepRect)
+        debugSurf = BASICFONT.render('Player {} {}, Mouse {} {} ({} {}), Map {} {}, Camera: {} {}'.format(j_playerx, j_playery, mouseTileX, mouseTileY, mousex, mousey, len(mapObj), len(mapObj[0]), cameraOffsetX, cameraOffsetY), 1, TEXTCOLOR)
+        debugRect = debugSurf.get_rect()
+        debugRect.bottomleft = (20, WINHEIGHT - 35)
+        #DISPLAYSURF.blit(debugSurf, debugRect)
 
         if levelIsComplete:
             # is solved, show the "Solved!" image until the player
@@ -360,12 +411,48 @@ def runLevel(levels, levelNum):
         pygame.display.update() # draw DISPLAYSURF to the screen.
         FPSCLOCK.tick()
 
+def pushStar(mapObj, gameStateObj, src, dest):
+    """returns tuple (stepCount, player position) if star can be pushed to destination, otherwise returns None"""
+    src_x, src_y = src
+    mesh = copy.deepcopy(mapObj)
+    for star_x, star_y in gameStateObj['stars']:
+        if not (star_x == src_x and star_y == src_y): mesh[star_x][star_y] = "$" # draw all stars accept the selected one
+    if dest == None: # see already if src adjoining cell can be reached by player
+        return None
+    dest_x, dest_y = dest
+    if mesh[dest_x][dest_y] != 'o': return None # inside floor
+    visited = set() # keep track of visited cells
+    visited.add(src) # Mark the source cell as visited
+    q = queue.Queue() # list to hold for each point: point currently holding the selected star, stepCount, player position
+    q.put((src, 0, gameStateObj['player'])) # 0 steps to reach src
+    while not q.empty(): # Do a BFS starting from source cell
+        (point_x, point_y), distance, (player_x, player_y) = q.get()
+        # If we have reached the destination cell, we are done..
+        if point_x == dest_x and point_y == dest_y: return (distance, (player_x, player_y))
+        # Check current cell and add neighboring cells to the queue
+        rowNum = [-1, 0, 0, 1]
+        colNum = [0, -1, 1, 0]
+        for i in range(4):
+            row = point_x + rowNum[i]
+            col = point_y + colNum[i]
+            opposite_x = point_x - rowNum[i]
+            opposite_y = point_y - colNum[i]
+            if row >= 0 and row < len(mesh) and col >= 0 and col < len(mesh[0]) and mesh[row][col] == 'o' and not (row, col) in visited:
+                # check if player can walk to opposite point to push it here
+                mesh2 = copy.deepcopy(mesh)
+                mesh2[point_x][point_y] = "$" # draw selected star in it's current position
+                playerSteps = BFS(mesh2, (player_x, player_y), (opposite_x, opposite_y))
+                if playerSteps != None:
+                    # mark cell as visited and enqueue it
+                    visited.add((row, col))
+                    q.put(((row, col), distance + playerSteps + 1, (point_x, point_y)))
+    return None # destination cannot be reached
+
 def BFS(mesh, src, dest):
     """Breadth First Search, function to find the shortest path between a given source cell to a destination cell. https://www.geeksforgeeks.org/shortest-path-in-a-binary-maze/"""
     src_x, src_y = src
     dest_x, dest_y = dest
-    if mesh[src_x][src_y] != mesh[dest_x][dest_y]: return None
-    pathCharacter = mesh[src_x][src_y]
+    if mesh[src_x][src_y] != 'o' or mesh[dest_x][dest_y] != 'o': return None
     visited = set() # keep track of visited cells
     visited.add(src) # Mark the source cell as visited
     q = queue.Queue() # list to hold the calculated distance for each point to dest
@@ -380,7 +467,7 @@ def BFS(mesh, src, dest):
         for i in range(4):
             row = point_x + rowNum[i]
             col = point_y + colNum[i]
-            if row >= 0 and row < len(mesh) and col >= 0 and col < len(mesh[0]) and mesh[row][col] == pathCharacter and not (row, col) in visited:
+            if row >= 0 and row < len(mesh) and col >= 0 and col < len(mesh[0]) and mesh[row][col] == 'o' and not (row, col) in visited:
                 # mark cell as visited and enqueue it
                 visited.add((row, col))
                 q.put(((row, col), distance + 1))
@@ -624,7 +711,7 @@ def readLevelsFile(filename):
             # Create level object and starting game state object.
             gameStateObj = {'player': (startx, starty),
                             'stepCounter': 0,
-                            'stars': stars}
+                            'stars': stars, GameStateItem.SELECTED_STAR_INDEX.name: None}
             levelObj = {'width': maxWidth,
                         'height': len(mapObj),
                         'mapObj': mapObj,
@@ -676,6 +763,10 @@ def drawMap(mapObj, gameStateObj, goals):
     mapSurf = pygame.Surface((mapSurfWidth, mapSurfHeight))
     mapSurf.fill(BGCOLOR) # start with a blank color on the surface.
 
+    selectedStar = None
+    if gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name] != None:
+        selectedStar = gameStateObj['stars'][gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name]]
+
     # Draw the tile sprites onto this surface.
     for x in range(len(mapObj)):
         for y in range(len(mapObj[x])):
@@ -696,7 +787,9 @@ def drawMap(mapObj, gameStateObj, goals):
                     # A goal AND star are on this space, draw goal first.
                     mapSurf.blit(IMAGESDICT['covered goal'], spaceRect)
                 # Then draw the star sprite.
-                mapSurf.blit(IMAGESDICT['star'], spaceRect)
+                if selectedStar != None and (x, y) == selectedStar:
+                    mapSurf.blit(IMAGESDICT['star red'], spaceRect)
+                else: mapSurf.blit(IMAGESDICT['star'], spaceRect)
             elif (x, y) in goals:
                 # Draw a goal without a star on it.
                 mapSurf.blit(IMAGESDICT['uncovered goal'], spaceRect)
