@@ -354,6 +354,7 @@ def runLevel(levels, levelNum):
                     if countJump: jump += 1
                 else: playerMoveRepeat = 0
 
+        if mapNeedsRedraw:
             if isLevelFinished(levelObj, gameStateObj):
                 # level is solved, we should show the "Solved!" image.
                 levelIsComplete = True
