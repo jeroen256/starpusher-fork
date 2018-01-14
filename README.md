@@ -19,16 +19,12 @@ Extra features added:
   - Shortest route is calculated with BFS (Breadth First Search), a function to find the shortest path in a maze between a given source cell to a destination cell. 
   - https://www.geeksforgeeks.org/shortest-path-in-a-binary-maze/
   - Step counter is increased accordingly.
+- Window resizable
 
 In case of any error, delete the "settings.pkl" file.
 If that doens't resolve it, also delete the "settings.json" file.
 These files contain the saved game state. 
 Sometimes a newer version comes out that can't handle the older game state.
-
-To adjust the game resolution / window size, edit the file "main.py" around line 30:
-WINWIDTH = 1366
-WINHEIGHT = 720
-Set the preferred width and height in pizels. This is on todo list..
 
 Github: https://github.com/jeroen256/starpusher-fork
 

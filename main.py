@@ -27,11 +27,16 @@ class GameStateItem(Enum):
     SELECTED_STAR_INDEX = 4
 
 FPS = 30 # frames per second to update the screen
-WINWIDTH = 1366 # width of the program's window, in pixels
-WINHEIGHT = 720 # height in pixels
-HALF_WINWIDTH = int(WINWIDTH / 2)
-HALF_WINHEIGHT = int(WINHEIGHT / 2)
 
+def set_window_size(size):
+    global DISPLAYSURF, WINWIDTH, WINHEIGHT, HALF_WINWIDTH, HALF_WINHEIGHT
+    x, y = size
+    DISPLAYSURF=pygame.display.set_mode(size,HWSURFACE|DOUBLEBUF|RESIZABLE)
+    x, y = pygame.display.get_surface().get_size()
+    WINWIDTH = x # width of the program's window, in pixels
+    WINHEIGHT = y # height in pixels
+    HALF_WINWIDTH = int(x / 2)
+    HALF_WINHEIGHT = int(y / 2)
 # The total width and height of each tile in pixels.
 TILEWIDTH = 50
 TILEHEIGHT = 85
@@ -66,9 +71,10 @@ def main():
     # from the pygame.display.set_mode() function, this is the
     # Surface object that is drawn to the actual computer screen
     # when pygame.display.update() is called.
-    DISPLAYSURF = pygame.display.set_mode((WINWIDTH, WINHEIGHT))
+    set_window_size((0,0))
+    #DISPLAYSURF = pygame.display.set_mode((WINWIDTH, WINHEIGHT),HWSURFACE|DOUBLEBUF|FULLSCREEN)
 
-    pygame.display.set_caption('Star Pusher Jeroen')
+    pygame.display.set_caption('Star Pusher Fork')
     #BASICFONT = pygame.font.Font('freesansbold.ttf', 18)
 
     BASICFONT = pygame.font.Font("DejaVuSans.ttf", 18)
@@ -166,9 +172,6 @@ def runLevel(levels, levelNum):
     if savedGameStateObj != None: gameStateObj = savedGameStateObj
     mapObj = decorateMap(levelObj['mapObj'], gameStateObj['player'])
     mapNeedsRedraw = True # set to True to call drawMap()
-    levelSurf = BASICFONT.render('Level %s of %s' % (levelNum + 1, len(levels)), 1, TEXTCOLOR)
-    levelRect = levelSurf.get_rect()
-    levelRect.bottomleft = (20, WINHEIGHT - 10)
     mapWidth = len(mapObj) * TILEWIDTH
     mapHeight = (len(mapObj[0]) - 1) * TILEFLOORHEIGHT + TILEHEIGHT
     MAX_CAM_X_PAN = abs(HALF_WINHEIGHT - int(mapHeight / 2)) + TILEWIDTH
@@ -202,6 +205,11 @@ def runLevel(levels, levelNum):
             if event.type == QUIT:
                 # Player clicked the "X" at the corner of the window.
                 terminate()
+            elif event.type==VIDEORESIZE: 
+                set_window_size(event.dict['size'])
+                MAX_CAM_X_PAN = abs(HALF_WINHEIGHT - int(mapHeight / 2)) + TILEWIDTH
+                MAX_CAM_Y_PAN = abs(HALF_WINWIDTH - int(mapWidth / 2)) + TILEHEIGHT
+                mapNeedsRedraw = True
             if event.type == pygame.MOUSEBUTTONUP:
                 # if y < int(WINHEIGHT / 3): playerMoveTo = UP
                 # elif y > int(WINHEIGHT / 3 * 2): playerMoveTo = DOWN
@@ -388,13 +396,15 @@ def runLevel(levels, levelNum):
         # Draw mapSurf to the DISPLAYSURF Surface object.
         DISPLAYSURF.blit(mapSurf, mapSurfRect)
 
+        levelSurf = BASICFONT.render('Level %s of %s' % (levelNum + 1, len(levels)), 1, TEXTCOLOR)
+        levelRect = levelSurf.get_rect()
+        levelRect.bottomleft = (20, WINHEIGHT - 10)
         DISPLAYSURF.blit(levelSurf, levelRect)
-        j_playerx, j_playery = gameStateObj['player']
         stepSurf = BASICFONT.render('Steps: {}{}'.format(gameStateObj['stepCounter'], "" if jump < 2 else " +"+str(jump)), 1, TEXTCOLOR)
         stepRect = stepSurf.get_rect()
         stepRect.bottomleft = (20, WINHEIGHT - 60)
         DISPLAYSURF.blit(stepSurf, stepRect)
-        debugSurf = BASICFONT.render('Player {} {}, Mouse {} {} ({} {}), Map {} {}, Camera: {} {}'.format(j_playerx, j_playery, mouseTileX, mouseTileY, mousex, mousey, len(mapObj), len(mapObj[0]), cameraOffsetX, cameraOffsetY), 1, TEXTCOLOR)
+        debugSurf = BASICFONT.render('Player {} {}, Mouse {} {} ({} {}), Map {} {}, Camera: {} {}'.format(gameStateObj['player'][0], gameStateObj['player'][1], mouseTileX, mouseTileY, mousex, mousey, len(mapObj), len(mapObj[0]), cameraOffsetX, cameraOffsetY), 1, TEXTCOLOR)
         debugRect = debugSurf.get_rect()
         debugRect.bottomleft = (20, WINHEIGHT - 35)
         #DISPLAYSURF.blit(debugSurf, debugRect)
@@ -627,6 +637,10 @@ def startScreen():
         for event in pygame.event.get():
             if event.type == QUIT:
                 terminate()
+            elif event.type==VIDEORESIZE: 
+                set_window_size(event.dict['size'])
+                startScreen()
+                return
             elif event.type == KEYDOWN:
                 if event.key == K_ESCAPE:
                     terminate()
