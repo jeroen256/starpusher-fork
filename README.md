@@ -20,6 +20,7 @@ Extra features added:
   - https://www.geeksforgeeks.org/shortest-path-in-a-binary-maze/
   - Step counter is increased accordingly.
 - Window resizable
+- F: toggle fullscreen
 
 In case of any error, delete the "settings.pkl" file.
 If that doens't resolve it, also delete the "settings.json" file.

@@ -27,11 +27,12 @@ class GameStateItem(Enum):
     SELECTED_STAR_INDEX = 4
 
 FPS = 30 # frames per second to update the screen
-
-def set_window_size(size):
-    global DISPLAYSURF, WINWIDTH, WINHEIGHT, HALF_WINWIDTH, HALF_WINHEIGHT
+def set_window_size(size, fullscreen = False):
+    global DISPLAYSURF, WINWIDTH, WINHEIGHT, HALF_WINWIDTH, HALF_WINHEIGHT, FULLSCREEN
+    FULLSCREEN = fullscreen
     x, y = size
-    DISPLAYSURF=pygame.display.set_mode(size,HWSURFACE|DOUBLEBUF|RESIZABLE)
+    if fullscreen: DISPLAYSURF=pygame.display.set_mode(size,pygame.FULLSCREEN)
+    else: DISPLAYSURF=pygame.display.set_mode(size,HWSURFACE|DOUBLEBUF|RESIZABLE)
     x, y = pygame.display.get_surface().get_size()
     WINWIDTH = x # width of the program's window, in pixels
     WINHEIGHT = y # height in pixels
@@ -71,7 +72,7 @@ def main():
     # from the pygame.display.set_mode() function, this is the
     # Surface object that is drawn to the actual computer screen
     # when pygame.display.update() is called.
-    set_window_size((0,0))
+    set_window_size((0,0), True)
     #DISPLAYSURF = pygame.display.set_mode((WINWIDTH, WINHEIGHT),HWSURFACE|DOUBLEBUF|FULLSCREEN)
 
     pygame.display.set_caption('Star Pusher Fork')
@@ -285,7 +286,11 @@ def runLevel(levels, levelNum):
                         gameStateObj = gameStateObjHistory.pop()
                         gameStateObj = gameStateObjHistory.pop()
                         mapNeedsRedraw = True
-                
+                elif event.key == K_f:
+                    set_window_size((0,0), not FULLSCREEN)
+                    MAX_CAM_X_PAN = abs(HALF_WINHEIGHT - int(mapHeight / 2)) + TILEWIDTH
+                    MAX_CAM_Y_PAN = abs(HALF_WINWIDTH - int(mapWidth / 2)) + TILEHEIGHT
+                    mapNeedsRedraw = True
                 if event.key == K_LEFT:
                     playerMoveTo = LEFT
                 elif event.key == K_RIGHT:
@@ -614,8 +619,10 @@ def startScreen():
     instructionText = ['Push the stars over the marks.',
                        'Arrow keys to move, WASD for camera control, P to change character.',
                        'Backspace to reset level, Esc to quit.',
-                       'N for next level, B to go back a level.', '', 'Extra: level is saved, also:',
-                       'ALT: walk continuously, CTRL walk 5 steps, SHIFT walk to end of line, Mouseclick: teleport, CTRL+Z: undo']
+                       'N for next level, B to go back a level.', '', 
+                       'Extra: level is saved, also:',
+                       'ALT: walk continuously, CTRL walk 5 steps, SHIFT walk to end of line,',
+                       'Mouseclick: teleport, CTRL+Z: undo, F: toggle fullscreen']
 
     # Start with drawing a blank color to the entire window:
     DISPLAYSURF.fill(BGCOLOR)
@@ -644,6 +651,10 @@ def startScreen():
             elif event.type == KEYDOWN:
                 if event.key == K_ESCAPE:
                     terminate()
+                elif event.key == K_f:
+                    set_window_size((0,0), not FULLSCREEN)
+                    startScreen()
+                    return
                 #if event.key == pygame.K_AC_BACK:
                 #    terminate()
 
@@ -829,6 +840,10 @@ def isLevelFinished(levelObj, gameStateObj):
 
 
 def terminate():
+    try: currentLevelIndex
+    except NameError: # no need to save, probably in startscreen
+        pygame.quit()
+        sys.exit()
     try:
         with open('settings.json', 'w') as f:
             json.dump({ 'currentLevelIndex': currentLevelIndex, 'gameStateObj': gameStateObj}, f, indent=4)
