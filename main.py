@@ -1,3 +1,4 @@
+#!/usr/bin/env python3.6
 # Build for Android:
 # https://github.com/renpy/pygame_sdl2
 # https://github.com/renpytom/rapt-pygame-example
@@ -26,18 +27,44 @@ from enum import Enum
 class GameStateItem(Enum):
     SELECTED_STAR_INDEX = 4
 
-FPS = 30 # frames per second to update the screen
+class Settings:
+    """Saved current level idex, window width and height and if fullscreen"""
+    def __init__(self):
+        self.current_level_index = 0 # 63
+        self.window_width = 0
+        self.window_height = 0
+        self.fullscreen = True
+    def save(self):
+        """Saves the settings in a file"""
+        try:
+            with open('settings.json', 'w') as f:
+                json.dump(self.__dict__, f, sort_keys=True, indent=4)
+        except Exception as e: print("Error settings.save(): {}".format(str(e)))
+    def load(self):
+        """Loads the settings from a file"""
+        try:
+            with open('settings.json', 'r') as f:
+                self.__dict__ = json.load(f)
+        except Exception as e:
+            print("Error settings.load(): {}".format(str(e)))
+settings = Settings()
+settings.load()
+
+#FPS = 30 # frames per second to update the screen
 def set_window_size(size, fullscreen = False):
-    global DISPLAYSURF, WINWIDTH, WINHEIGHT, HALF_WINWIDTH, HALF_WINHEIGHT, FULLSCREEN
-    FULLSCREEN = fullscreen
+    global DISPLAYSURF, WINWIDTH, WINHEIGHT, HALF_WINWIDTH, HALF_WINHEIGHT
     x, y = size
-    if fullscreen: DISPLAYSURF=pygame.display.set_mode(size,pygame.FULLSCREEN)
-    else: DISPLAYSURF=pygame.display.set_mode(size,HWSURFACE|DOUBLEBUF|RESIZABLE)
+    if fullscreen: DISPLAYSURF = pygame.display.set_mode((0,0),HWSURFACE|DOUBLEBUF|FULLSCREEN)
+    else: DISPLAYSURF = pygame.display.set_mode(size,HWSURFACE|DOUBLEBUF|RESIZABLE)
     x, y = pygame.display.get_surface().get_size()
     WINWIDTH = x # width of the program's window, in pixels
     WINHEIGHT = y # height in pixels
     HALF_WINWIDTH = int(x / 2)
     HALF_WINHEIGHT = int(y / 2)
+    if not fullscreen: # keep original to switch back to this size when leaving fullscreen
+        settings.window_width = x
+        settings.window_height = y
+    settings.fullscreen = fullscreen
 # The total width and height of each tile in pixels.
 TILEWIDTH = 50
 TILEHEIGHT = 85
@@ -60,9 +87,8 @@ DOWN = 'down'
 LEFT = 'left'
 RIGHT = 'right'
 
-
 def main():
-    global FPSCLOCK, DISPLAYSURF, IMAGESDICT, TILEMAPPING, OUTSIDEDECOMAPPING, BASICFONT, PLAYERIMAGES, currentImage, currentLevelIndex, settings, savedGameStateObj
+    global FPSCLOCK, DISPLAYSURF, IMAGESDICT, TILEMAPPING, OUTSIDEDECOMAPPING, BASICFONT, PLAYERIMAGES, currentImage, savedGameStateObj
 
     # Pygame initialization and basic set up of the global variables.
     pygame.init()
@@ -72,12 +98,11 @@ def main():
     # from the pygame.display.set_mode() function, this is the
     # Surface object that is drawn to the actual computer screen
     # when pygame.display.update() is called.
-    set_window_size((0,0), True)
+    set_window_size((settings.window_width, settings.window_height), settings.fullscreen)
     #DISPLAYSURF = pygame.display.set_mode((WINWIDTH, WINHEIGHT),HWSURFACE|DOUBLEBUF|FULLSCREEN)
 
     pygame.display.set_caption('Star Pusher Fork')
     #BASICFONT = pygame.font.Font('freesansbold.ttf', 18)
-
     BASICFONT = pygame.font.Font("DejaVuSans.ttf", 18)
 
     # A global dict value that will contain all the Pygame
@@ -128,41 +153,35 @@ def main():
     # details on the format of this file and how to make your own levels.
     levels = readLevelsFile('starPusherLevels.txt')
 
-    currentLevelIndex = 0 # 43
     savedGameStateObj = None
     try:
-        #with open('settings.pkl', 'rb') as f:
-        #    self.__dict__ = pickle.load(f)
-        with open('settings.json', 'r') as f:
-            settings = json.load(f)
-        currentLevelIndex = settings['currentLevelIndex']
-        with open('settings.pkl', 'rb') as f:
+        with open('gameStateObj.pkl', 'rb') as f:
             savedGameStateObj = pickle.load(f)
     except Exception as e:
-        print("Fout settings.load(): {}".format(str(e)))
+        print("Error loading gameStateObj.pkl: {}".format(str(e)))
 
     # The main game loop. This loop runs a single level, when the user
     # finishes that level, the next/previous level is loaded.
     while True: # main game loop
         # Run the level to actually start playing the game:
-        result = runLevel(levels, currentLevelIndex)
+        result = runLevel(levels, settings.current_level_index)
         # try:
-        #     result = runLevel(levels, currentLevelIndex)
+        #     result = runLevel(levels, settings.current_level_index)
         # except Exception as ex:
         #     print("Error in runLevel, retrying without savedGameStateObj: {}".format(str(ex)))
         savedGameStateObj = None
         if result in ('solved', 'next'):
             # Go to the next level.
-            currentLevelIndex += 1
-            if currentLevelIndex >= len(levels):
+            settings.current_level_index += 1
+            if settings.current_level_index >= len(levels):
                 # If there are no more levels, go back to the first one.
-                currentLevelIndex = 0
+                settings.current_level_index = 0
         elif result == 'back':
             # Go to the previous level.
-            currentLevelIndex -= 1
-            if currentLevelIndex < 0:
+            settings.current_level_index -= 1
+            if settings.current_level_index < 0:
                 # If there are no previous levels, go to the last one.
-                currentLevelIndex = len(levels)-1
+                settings.current_level_index = len(levels)-1
         elif result == 'reset':
             pass # Do nothing. Loop re-calls runLevel() to reset the level
 
@@ -196,22 +215,26 @@ def runLevel(levels, levelNum):
     TILEHEIGHTREAL = TILEHEIGHT - TILEFLOORHEIGHT
     jump = 0
     gameStateObjHistory = []
+    gameStateObjRedoList = []
     while True: # main game loop
         # Reset these variables:
         #playerMoveTo = None
         playerMoveRepeat = 1
         keyPressed = False
+        isRedo = False
+        isUndo = False
 
         for event in pygame.event.get(): # event handling loop
             if event.type == QUIT:
                 # Player clicked the "X" at the corner of the window.
                 terminate()
-            elif event.type==VIDEORESIZE: 
+            elif event.type==VIDEORESIZE:
+                mapNeedsRedraw = True
                 set_window_size(event.dict['size'])
                 MAX_CAM_X_PAN = abs(HALF_WINHEIGHT - int(mapHeight / 2)) + TILEWIDTH
                 MAX_CAM_Y_PAN = abs(HALF_WINWIDTH - int(mapWidth / 2)) + TILEHEIGHT
-                mapNeedsRedraw = True
             if event.type == pygame.MOUSEBUTTONUP:
+                mapNeedsRedraw = True
                 # if y < int(WINHEIGHT / 3): playerMoveTo = UP
                 # elif y > int(WINHEIGHT / 3 * 2): playerMoveTo = DOWN
                 # else:
@@ -235,7 +258,6 @@ def runLevel(levels, levelNum):
                             gameStateObj['player'] = player
                             # Move the star.
                             gameStateObj['stars'][gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name]] = mouseTile
-                            mapNeedsRedraw = True
                     else: # teleport
                         gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name] = None
                         # Create mesh, draw current location of stars:
@@ -246,107 +268,66 @@ def runLevel(levels, levelNum):
                             jump = distance
                             gameStateObj['stepCounter'] += distance
                             gameStateObj['player'] = mouseTile
-                            mapNeedsRedraw = True
                         else: jump = 0
                 elif mouseTile in gameStateObj['stars']:
                     # select or unselect star
                     mouseTileStarIndex = gameStateObj['stars'].index(mouseTile)
                     if mouseTileStarIndex == gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name]:
                         gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name] = None
-                    else: gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name] = mouseTileStarIndex
-                    # Try to walk to next to the to be pushed star
-                    rowNum = [-1, 0, 0, 1]
-                    colNum = [0, -1, 1, 0]
-                    bestRoute = None
-                    mesh = copy.deepcopy(mapObj)
-                    for star_x, star_y in gameStateObj['stars']: mesh[star_x][star_y] = "$"
-                    for i in range(4):
-                        x = mouseTileX + rowNum[i]
-                        y = mouseTileY + colNum[i]
-                        distance = BFS(mesh, gameStateObj['player'], (x, y))
-                        if not distance == None:
-                            if bestRoute == None or distance < bestRoute[0]: bestRoute = (distance, x, y)
-                    if not bestRoute == None:
-                        jump = bestRoute[0]
-                        gameStateObj['stepCounter'] += bestRoute[0]
-                        gameStateObj['player'] = (bestRoute[1], bestRoute[2])
-                        mapNeedsRedraw = True
                     else: 
-                        jump = 0
-                        gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name] = None
+                        # see if player could walk to it
+                        mesh = copy.deepcopy(mapObj)
+                        for star_x, star_y in gameStateObj['stars']: 
+                            if not (star_x == mouseTileX and star_y == mouseTileY): mesh[star_x][star_y] = "$"
+                        distance = BFS(mesh, gameStateObj['player'], mouseTile)
+                        if not distance == None:
+                            gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name] = mouseTileStarIndex
                 else: # click on wall
                     if gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name] != None:
                         gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name] = None
-                        mapNeedsRedraw = True
             elif event.type == KEYDOWN:
-                # Handle key presses
+                mapNeedsRedraw = True
                 keyPressed = True
-                if event.key == K_z and (pygame.key.get_mods() & KMOD_CTRL):
-                    if len(gameStateObjHistory) > 1:
-                        gameStateObj = gameStateObjHistory.pop()
-                        gameStateObj = gameStateObjHistory.pop()
-                        mapNeedsRedraw = True
+                if event.key == K_z:
+                    if (pygame.key.get_mods() & KMOD_CTRL) and (pygame.key.get_mods() & KMOD_SHIFT): # redo
+                        if len(gameStateObjRedoList) > 0:
+                            gameStateObj = gameStateObjRedoList.pop()
+                            isRedo = True
+                    elif (pygame.key.get_mods() & KMOD_CTRL): # undo
+                        if len(gameStateObjHistory) > 1:
+                            gameStateObjRedoList.append(gameStateObj)
+                            gameStateObjHistory.pop()
+                            gameStateObj = gameStateObjHistory.pop()
+                            isUndo = True
                 elif event.key == K_f:
-                    set_window_size((0,0), not FULLSCREEN)
+                    set_window_size((settings.window_width, settings.window_height), not settings.fullscreen)
                     MAX_CAM_X_PAN = abs(HALF_WINHEIGHT - int(mapHeight / 2)) + TILEWIDTH
                     MAX_CAM_Y_PAN = abs(HALF_WINWIDTH - int(mapWidth / 2)) + TILEHEIGHT
-                    mapNeedsRedraw = True
-                if event.key == K_LEFT:
-                    playerMoveTo = LEFT
-                elif event.key == K_RIGHT:
-                    playerMoveTo = RIGHT
-                elif event.key == K_UP:
-                    playerMoveTo = UP
-                elif event.key == K_DOWN:
-                    playerMoveTo = DOWN
-
-                if playerMoveTo != None:
-                    if (pygame.key.get_mods() & KMOD_CTRL): 
-                        playerMoveRepeat = 5
-                        jump = 0
-                    elif (pygame.key.get_mods() & KMOD_SHIFT): 
-                        playerMoveRepeat = 100
-                        jump = 0
-
-                # Set the camera move mode.
-                elif event.key == K_a:
-                    cameraLeft = True
-                elif event.key == K_d:
-                    cameraRight = True
-                elif event.key == K_w:
-                    cameraUp = True
-                elif event.key == K_s:
-                    cameraDown = True
-
-                elif event.key == K_n:
-                    return 'next'
-                elif event.key == K_b:
-                    return 'back'
-
-                elif event.key == K_ESCAPE:
-                    terminate() # Esc key quits.
-                elif event.key == K_BACKSPACE:
-                    return 'reset' # Reset the level.
-                #elif event.key == K_AC_BACK:
-                #    return 'reset' # Reset the level.
+                elif event.key == K_a: cameraLeft = True # Set the camera move mode.
+                elif event.key == K_d: cameraRight = True
+                elif event.key == K_w: cameraUp = True
+                elif event.key == K_s: cameraDown = True
+                elif event.key == K_n: return 'next'
+                elif event.key == K_b: return 'back'
+                elif event.key == K_ESCAPE: terminate() # Esc key quits.
+                elif event.key == K_BACKSPACE: return 'reset' # Reset the level.
+                #elif event.key == K_AC_BACK: return 'reset' # Reset the level.
                 elif event.key == K_p:
-                    # Change the player image to the next one.
-                    currentImage += 1
-                    if currentImage >= len(PLAYERIMAGES):
-                        # After the last player image, use the first one.
-                        currentImage = 0
-                    mapNeedsRedraw = True
+                    currentImage += 1 # Change the player image to the next one.
+                    if currentImage >= len(PLAYERIMAGES): currentImage = 0
+                elif event.key == K_LEFT: playerMoveTo = LEFT
+                elif event.key == K_RIGHT: playerMoveTo = RIGHT
+                elif event.key == K_UP: playerMoveTo = UP
+                elif event.key == K_DOWN: playerMoveTo = DOWN
+                if playerMoveTo != None:
+                    if (pygame.key.get_mods() & KMOD_CTRL): playerMoveRepeat = 5
+                    elif (pygame.key.get_mods() & KMOD_SHIFT): playerMoveRepeat = 100
 
             elif event.type == KEYUP:
-                # Unset the camera move mode.
-                if event.key == K_a:
-                    cameraLeft = False
-                elif event.key == K_d:
-                    cameraRight = False
-                elif event.key == K_w:
-                    cameraUp = False
-                elif event.key == K_s:
-                    cameraDown = False
+                if event.key == K_a: cameraLeft = False # Unset the camera move mode.
+                elif event.key == K_d: cameraRight = False
+                elif event.key == K_w: cameraUp = False
+                elif event.key == K_s: cameraDown = False
                 elif event.key == K_UP or event.key == K_DOWN or event.key == K_LEFT or event.key == K_RIGHT:
                     playerMoveTo = None
 
@@ -357,6 +338,7 @@ def runLevel(levels, levelNum):
             # If the player pushed a key to move, make the move
             # (if possible) and push any stars that are pushable.
             countJump = True if playerMoveRepeat > 1 else False
+            if countJump: jump = 0
             while playerMoveRepeat > 0:
                 playerMoveRepeat -= 1
                 moved = makeMove(mapObj, gameStateObj, playerMoveTo)
@@ -373,8 +355,12 @@ def runLevel(levels, levelNum):
                 levelIsComplete = True
                 keyPressed = False
 
-        if len(gameStateObjHistory) == 0 or gameStateObjHistory[len(gameStateObjHistory)-1]['player'] != gameStateObj['player']:
+        if len(gameStateObjHistory) == 0 \
+            or gameStateObjHistory[len(gameStateObjHistory)-1]['player'] != gameStateObj['player'] \
+            or gameStateObjHistory[len(gameStateObjHistory)-1][GameStateItem.SELECTED_STAR_INDEX.name] != gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name]:
             gameStateObjHistory.append(copy.deepcopy(gameStateObj))
+            if not isRedo and not isUndo and gameStateObjRedoList != []:
+                gameStateObjRedoList = []
         if(len(gameStateObjHistory) > 300): 
             for i in range(len(gameStateObjHistory) - 300):
                 gameStateObjHistory.pop(0)
@@ -619,10 +605,11 @@ def startScreen():
     instructionText = ['Push the stars over the marks.',
                        'Arrow keys to move, WASD for camera control, P to change character.',
                        'Backspace to reset level, Esc to quit.',
-                       'N for next level, B to go back a level.', '', 
+                       'N for next level, B to go back a level.', '',
                        'Extra: level is saved, also:',
                        'ALT: walk continuously, CTRL walk 5 steps, SHIFT walk to end of line,',
-                       'Mouseclick: teleport, CTRL+Z: undo, F: toggle fullscreen']
+                       'Mouseclick: teleport, F: toggle fullscreen',
+                       'CTRL+Z: undo, CTRL+SHIFT+Z: redo']
 
     # Start with drawing a blank color to the entire window:
     DISPLAYSURF.fill(BGCOLOR)
@@ -652,7 +639,7 @@ def startScreen():
                 if event.key == K_ESCAPE:
                     terminate()
                 elif event.key == K_f:
-                    set_window_size((0,0), not FULLSCREEN)
+                    set_window_size((settings.window_width, settings.window_height), not settings.fullscreen)
                     startScreen()
                     return
                 #if event.key == pygame.K_AC_BACK:
@@ -840,18 +827,11 @@ def isLevelFinished(levelObj, gameStateObj):
 
 
 def terminate():
-    try: currentLevelIndex
-    except NameError: # no need to save, probably in startscreen
-        pygame.quit()
-        sys.exit()
+    settings.save()
     try:
-        with open('settings.json', 'w') as f:
-            json.dump({ 'currentLevelIndex': currentLevelIndex, 'gameStateObj': gameStateObj}, f, indent=4)
-        with open('settings.pkl', 'wb') as f:
-                pickle.dump(gameStateObj, f, pickle.HIGHEST_PROTOCOL)
-        # with open('settings2.json', 'w') as f:
-        #     json.dump(gameStateObj, f, indent=4)
-    except Exception as e: print("Fout settings.save(): {}".format(str(e)))
+        with open('gameStateObj.pkl', 'wb') as f:
+            pickle.dump(gameStateObj, f, pickle.HIGHEST_PROTOCOL)
+    except Exception as e: print("Error saving gameStateObj: {}".format(str(e)))
     pygame.quit()
     sys.exit()
 
