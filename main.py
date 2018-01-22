@@ -1,22 +1,25 @@
 #!/usr/bin/env python3.6
-# Build for Android:
-# https://github.com/renpy/pygame_sdl2
-# https://github.com/renpytom/rapt-pygame-example
-# ~/Documents/python/rapt $ python android.py configure ../starpusher-jeroen
-# ~/Documents/python/rapt $ python android.py --launch build ../starpusher-jeroen release install
-# adb logcat
-
+# pylint: disable=C0301
+"""
 # Star Pusher (a Sokoban clone)
 # By Al Sweigart al@inventwithpython.com
 # http://inventwithpython.com/pygame
 # Released under a "Simplified BSD" license
+
+Build for Android:
+https://github.com/renpy/pygame_sdl2
+https://github.com/renpytom/rapt-pygame-example
+~/Documents/python/rapt $ python android.py configure ../starpusher-jeroen
+~/Documents/python/rapt $ python android.py --launch build ../starpusher-jeroen release install
+adb logcat
+"""
 
 try:
     import pygame_sdl2
     pygame_sdl2.import_as_pygame()
 except ImportError:
     pass
-    
+
 import random, sys, copy, os, pygame
 from pygame.locals import *
 import queue
@@ -191,49 +194,40 @@ def runLevel(levels, levelNum):
     gameStateObj = copy.deepcopy(levelObj['startState'])
     if savedGameStateObj != None: gameStateObj = savedGameStateObj
     mapObj = decorateMap(levelObj['mapObj'], gameStateObj['player'])
-    mapNeedsRedraw = True # set to True to call drawMap()
     mapWidth = len(mapObj) * TILEWIDTH
     mapHeight = (len(mapObj[0]) - 1) * TILEFLOORHEIGHT + TILEHEIGHT
     MAX_CAM_X_PAN = abs(HALF_WINHEIGHT - int(mapHeight / 2)) + TILEWIDTH
     MAX_CAM_Y_PAN = abs(HALF_WINWIDTH - int(mapWidth / 2)) + TILEHEIGHT
-
+    mapNeedsRedraw = True # set to True to call drawMap()
     levelIsComplete = False
-    # Track how much the camera has moved:
-    cameraOffsetX = 0
+    cameraOffsetX = 0 # Track how much the camera has moved:
     cameraOffsetY = 0
-    # Track if the keys to move the camera are being held down:
-    cameraUp = False
+    cameraUp = False # Track if the keys to move the camera are being held down:
     cameraDown = False
     cameraLeft = False
     cameraRight = False
-
     playerMoveTo = None
     mousex = 0
     mousey =0
     mouseTileX = 0
     mouseTileY = 0
-    TILEHEIGHTREAL = TILEHEIGHT - TILEFLOORHEIGHT
     jump = 0
     gameStateObjHistory = []
     gameStateObjRedoList = []
     while True: # main game loop
-        # Reset these variables:
-        #playerMoveTo = None
-        playerMoveRepeat = 1
+        playerMoveRepeat = 1 # Reset these variables:
         keyPressed = False
         isRedo = False
         isUndo = False
-
         for event in pygame.event.get(): # event handling loop
-            if event.type == QUIT:
-                # Player clicked the "X" at the corner of the window.
-                terminate()
+            if event.type == QUIT: terminate() # Player clicked the "X" at the corner of the window.
             elif event.type==VIDEORESIZE:
                 mapNeedsRedraw = True
                 set_window_size(event.dict['size'])
                 MAX_CAM_X_PAN = abs(HALF_WINHEIGHT - int(mapHeight / 2)) + TILEWIDTH
                 MAX_CAM_Y_PAN = abs(HALF_WINWIDTH - int(mapWidth / 2)) + TILEHEIGHT
             if event.type == pygame.MOUSEBUTTONUP:
+                if levelIsComplete: return 'solved'
                 mapNeedsRedraw = True
                 # if y < int(WINHEIGHT / 3): playerMoveTo = UP
                 # elif y > int(WINHEIGHT / 3 * 2): playerMoveTo = DOWN
@@ -274,7 +268,7 @@ def runLevel(levels, levelNum):
                     mouseTileStarIndex = gameStateObj['stars'].index(mouseTile)
                     if mouseTileStarIndex == gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name]:
                         gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name] = None
-                    else: 
+                    else:
                         # see if player could walk to it
                         mesh = copy.deepcopy(mapObj)
                         for star_x, star_y in gameStateObj['stars']: 
@@ -286,6 +280,7 @@ def runLevel(levels, levelNum):
                     if gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name] != None:
                         gameStateObj[GameStateItem.SELECTED_STAR_INDEX.name] = None
             elif event.type == KEYDOWN:
+                if levelIsComplete: return 'solved'
                 mapNeedsRedraw = True
                 keyPressed = True
                 if event.key == K_z:
@@ -349,11 +344,8 @@ def runLevel(levels, levelNum):
                     if countJump: jump += 1
                 else: playerMoveRepeat = 0
 
-        if mapNeedsRedraw:
-            if isLevelFinished(levelObj, gameStateObj):
-                # level is solved, we should show the "Solved!" image.
-                levelIsComplete = True
-                keyPressed = False
+        # level is solved, we should show the "Solved!" image.
+        if mapNeedsRedraw and isLevelFinished(levelObj, gameStateObj): levelIsComplete = True
 
         if len(gameStateObjHistory) == 0 \
             or gameStateObjHistory[len(gameStateObjHistory)-1]['player'] != gameStateObj['player'] \
@@ -371,14 +363,10 @@ def runLevel(levels, levelNum):
             mapSurf = drawMap(mapObj, gameStateObj, levelObj['goals'])
             mapNeedsRedraw = False
 
-        if cameraUp and cameraOffsetY < MAX_CAM_X_PAN:
-            cameraOffsetY += CAM_MOVE_SPEED
-        elif cameraDown and cameraOffsetY > -MAX_CAM_X_PAN:
-            cameraOffsetY -= CAM_MOVE_SPEED
-        if cameraLeft and cameraOffsetX < MAX_CAM_Y_PAN:
-            cameraOffsetX += CAM_MOVE_SPEED
-        elif cameraRight and cameraOffsetX > -MAX_CAM_Y_PAN:
-            cameraOffsetX -= CAM_MOVE_SPEED
+        if cameraUp and cameraOffsetY < MAX_CAM_X_PAN: cameraOffsetY += CAM_MOVE_SPEED
+        elif cameraDown and cameraOffsetY > -MAX_CAM_X_PAN: cameraOffsetY -= CAM_MOVE_SPEED
+        if cameraLeft and cameraOffsetX < MAX_CAM_Y_PAN: cameraOffsetX += CAM_MOVE_SPEED
+        elif cameraRight and cameraOffsetX > -MAX_CAM_Y_PAN: cameraOffsetX -= CAM_MOVE_SPEED
 
         # Adjust mapSurf's Rect object based on the camera offset.
         mapSurfRect = mapSurf.get_rect()
@@ -400,15 +388,10 @@ def runLevel(levels, levelNum):
         debugRect.bottomleft = (20, WINHEIGHT - 35)
         #DISPLAYSURF.blit(debugSurf, debugRect)
 
-        if levelIsComplete:
-            # is solved, show the "Solved!" image until the player
-            # has pressed a key.
+        if levelIsComplete: # is solved, show the "Solved!" image until the player has pressed a key.
             solvedRect = IMAGESDICT['solved'].get_rect()
             solvedRect.center = (HALF_WINWIDTH, HALF_WINHEIGHT)
             DISPLAYSURF.blit(IMAGESDICT['solved'], solvedRect)
-
-            if keyPressed:
-                return 'solved'
 
         pygame.display.update() # draw DISPLAYSURF to the screen.
         FPSCLOCK.tick()
@@ -764,9 +747,7 @@ def floodFill(mapObj, x, y, oldCharacter, newCharacter):
 
 
 def drawMap(mapObj, gameStateObj, goals):
-    """Draws the map to a Surface object, including the player and
-    stars. This function does not call pygame.display.update(), nor
-    does it draw the "Level" and "Steps" text in the corner."""
+    """Draws the map to a Surface object, including the player and stars. This function does not call pygame.display.update(), nor does it draw the "Level" and "Steps" text in the corner."""
 
     # mapSurf will be the single Surface object that the tiles are drawn
     # on, so that it is easy to position the entire map on the DISPLAYSURF
@@ -816,15 +797,11 @@ def drawMap(mapObj, gameStateObj, goals):
 
     return mapSurf
 
-
 def isLevelFinished(levelObj, gameStateObj):
     """Returns True if all the goals have stars in them."""
     for goal in levelObj['goals']:
-        if goal not in gameStateObj['stars']:
-            # Found a space with a goal but no star on it.
-            return False
+        if goal not in gameStateObj['stars']: return False # Found a space with a goal but no star on it.
     return True
-
 
 def terminate():
     settings.save()
@@ -835,6 +812,4 @@ def terminate():
     pygame.quit()
     sys.exit()
 
-
-if __name__ == '__main__':
-    main()
+if __name__ == '__main__': main()
